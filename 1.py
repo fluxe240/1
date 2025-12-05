@@ -2,85 +2,65 @@ import os
 import threading
 from flask import Flask
 import discord
-from discord.ext import commands
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 
-TARGET_MESSAGE_ID = 1446599486909714482
-TARGET_ROLE_ID = 1446592229102719137
-TARGET_EMOJI = "✅"
+MESSAGE_ID = 1446599486909714482
+ROLE_ID = 1446592229102719137
+EMOJI = "✅"
 
-intents = discord.Intents.all()
-bot = commands.Bot(command_prefix="!", intents=intents)
+intents = discord.Intents.default()
+intents.guilds = True
+intents.members = True
+intents.reactions = True
+
+class MyBot(discord.Client):
+    async def on_ready(self):
+        print(f"READY {self.user} {self.user.id}")
+
+    async def on_raw_reaction_add(self, payload):
+        print("REACTION", payload.message_id, str(payload.emoji), payload.user_id)
+        if payload.guild_id is None:
+            return
+        if payload.message_id != MESSAGE_ID:
+            return
+        if str(payload.emoji) != EMOJI:
+            return
+        guild = self.get_guild(payload.guild_id)
+        if guild is None:
+            return
+        role = guild.get_role(ROLE_ID)
+        if role is None:
+            print("ROLE_NOT_FOUND")
+            return
+        if payload.user_id == self.user.id:
+            return
+        member = guild.get_member(payload.user_id)
+        if member is None:
+            try:
+                member = await guild.fetch_member(payload.user_id)
+            except Exception as e:
+                print("FETCH_ERROR", e)
+                return
+        if member.bot:
+            return
+        try:
+            await member.add_roles(role, reason="verify reaction")
+            print("ROLE_ADDED", member.id)
+        except Exception as e:
+            print("ADD_ROLE_ERROR", e)
 
 app = Flask(__name__)
 
 @app.route("/")
-def home():
+def index():
     return "ok"
 
 def run_web():
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
 
-@bot.event
-async def on_ready():
-    print(f"READY: {bot.user} ({bot.user.id})")
-
-@bot.event
-async def on_raw_reaction_add(payload):
-    print("RAW_REACTION_ADD:",
-          "msg", payload.message_id,
-          "emoji", str(payload.emoji),
-          "guild", payload.guild_id,
-          "channel", payload.channel_id,
-          "user", payload.user_id)
-
-    if payload.guild_id is None:
-        print("no guild (DM) -> skip")
-        return
-
-    if payload.message_id != TARGET_MESSAGE_ID:
-        print("wrong message id -> skip")
-        return
-
-    if str(payload.emoji) != TARGET_EMOJI:
-        print("wrong emoji -> skip")
-        return
-
-    guild = bot.get_guild(payload.guild_id)
-    if guild is None:
-        print("guild is None")
-        return
-
-    role = guild.get_role(TARGET_ROLE_ID)
-    if role is None:
-        print("role not found")
-        return
-
-    if payload.user_id == bot.user.id:
-        print("bot reaction -> skip")
-        return
-
-    member = guild.get_member(payload.user_id)
-    if member is None:
-        try:
-            member = await guild.fetch_member(payload.user_id)
-            print("fetched member:", member)
-        except Exception as e:
-            print("cannot fetch member:", e)
-            return
-
-    if member.bot:
-        print("member is bot -> skip")
-        return
-
-    try:
-        await member.add_roles(role, reason="verify reaction")
-        print(f"ROLE ADDED to {member} ({member.id})")
-    except Exception as e:
-        print("error add_roles:", e)
-
 if __name__ == "__main__":
-    threading.Thread(target=run_web).start()
+    threading.Thread(target=run_web, daemon=True).start()
+    bot = MyBot(intents=intents)
     bot.run(TOKEN)
