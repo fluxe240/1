@@ -5,18 +5,36 @@ import discord
 
 TOKEN = os.environ["DISCORD_TOKEN"]
 
-MESSAGE_ID = 1446825712609919050
+MESSAGE_ID = 1446599486909714482
 ROLE_ID = 1446592229102719137
 EMOJI = "✅"
+VOICE_CHANNEL_ID = 1446813772454035476
 
 intents = discord.Intents.default()
 intents.guilds = True
 intents.members = True
 intents.reactions = True
+intents.voice_states = True
 
 class MyBot(discord.Client):
     async def on_ready(self):
         print(f"READY {self.user} {self.user.id}")
+        await self.ensure_voice()
+
+    async def ensure_voice(self):
+        channel = self.get_channel(VOICE_CHANNEL_ID)
+        if channel is None or not isinstance(channel, discord.VoiceChannel):
+            print("VOICE_CHANNEL_NOT_FOUND", VOICE_CHANNEL_ID)
+            return
+        for vc in self.voice_clients:
+            if vc.channel.id == VOICE_CHANNEL_ID:
+                print("ALREADY_IN_VOICE", vc.channel.id)
+                return
+        try:
+            await channel.connect()
+            print("CONNECTED_TO_VOICE", channel.id)
+        except Exception as e:
+            print("VOICE_CONNECT_ERROR", e)
 
     async def on_raw_reaction_add(self, payload):
         print("REACTION_ADD", payload.message_id, str(payload.emoji), payload.user_id)
